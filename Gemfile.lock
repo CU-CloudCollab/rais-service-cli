@@ -1,0 +1,17 @@
+GEM
+  specs:
+    dotenv (2.0.2)
+    gli (2.13.1)
+    rais_ecs (0.3.0)
+    ruby-progressbar (1.7.5)
+    table_print (1.5.4)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  dotenv
+  gli
+  rais_ecs
+  ruby-progressbar
+  table_print

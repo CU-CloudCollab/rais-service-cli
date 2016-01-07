@@ -1,0 +1,5 @@
+gem 'gli'
+gem 'rais_ecs'
+gem 'table_print'
+gem 'dotenv'
+gem 'ruby-progressbar'

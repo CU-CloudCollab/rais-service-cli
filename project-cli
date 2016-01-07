@@ -1,0 +1,411 @@
+#!/usr/bin/env ruby
+
+# require global files + setup environment
+require 'dotenv'
+require 'gli'
+require 'table_print'
+require 'ruby-progressbar'
+require 'time'
+require 'date'
+require 'rais_ecs'
+
+Dotenv.load
+
+##############################################################################
+######  MODIFY HERE TO INCLUDE SERVICES ######
+
+# require specific service items and instantiate
+require_relative 'example_services/service_one'
+require_relative 'example_services/service_two'
+
+microservices = []
+microservices << ServiceOne.new
+microservices << ServiceTwo.new
+
+######  DON'T MODIFY AFTER HERE UNLESS YOU NEED TO CHANGE FUNCTIONALITY ######
+##############################################################################
+
+
+include GLI::App
+
+program_desc 'Microservice Build and Deploy Automation CLI'
+
+#####
+# List Services
+#####
+
+desc "List microservices manged by this tool"
+
+command :services do |microservice|
+
+    microservice.action do |global_options,options,args|
+      puts "Services managed by this tool are:"
+      microservices.each do |service_row|
+        puts service_row.cli_service_code
+      end
+      puts "\n"
+
+    end
+
+end
+
+
+#####
+# Current status of service
+#####
+
+desc "Display microservice status information"
+arg_name "service_name"
+
+command :status do |status|
+
+  status.action do |global_options,options,args|
+    microservice = get_microservice_from_args(microservices,args)
+
+    puts "\n**************************************\n"
+    puts "Service: #{microservice.cli_service_code}"
+    puts "**************************************\n"
+
+    # get data then build presentation hash for use with table_print
+    cluster = microservice.get_cluster
+
+    cluster_details = {
+      name: cluster.name,
+      status: cluster.status,
+      nodes: cluster.size
+    }
+
+    puts "Cluster Status:"
+    tp [cluster_details]
+    puts "\n"
+
+
+    # get data then build presentation hash for use with table_print
+    service = microservice.get_service
+    primary_container_config = service.get_primary_container_config
+
+    service_details = {
+      name: service.service_name,
+      desired_count: service.get_desired_count,
+      pending_count: service.get_pending_count,
+      running_count: service.get_running_count,
+      image: primary_container_config.image.remote_repository.get_remote_repository_name + ":" + primary_container_config.image.primary_image_tag,
+      cpu: primary_container_config.cpu,
+      memory: primary_container_config.memory
+
+    }
+
+    puts "Service Status:"
+    tp [service_details], :name, :desired_count, :pending_count, :running_count, {:image => {width:70}}, :cpu, :memory
+
+    puts "\n"
+
+
+    # get data then build presentation hash for use with table_print
+    deployments = []
+    service.get_deployments.each do |deployment|
+      container_config = deployment.container_config
+
+      deployments << {
+        datetime: deployment.created_at.localtime.strftime("%Y-%m-%d %H:%M:%S"),
+        status: deployment.status,
+        desired_count: deployment.desired_count,
+        pending_count: deployment.pending_count,
+        running_count: deployment.running_count,
+        image: container_config.image.remote_repository.get_remote_repository_name + ":" + container_config.image.primary_image_tag,
+        cpu: container_config.cpu,
+        memory: container_config.memory
+      }
+    end
+
+    puts "Deployments:"
+    tp deployments, :datetime, :status, :desired_count, :pending_count, :running_count, {:image => {width:70}}, :cpu, :memory
+
+    puts "\n"
+
+
+    # get data then build presentation hash for use with table_print
+    instances = []
+    service.get_nodes.each do |node|
+      instances << {
+        id: node.get_node_instance_id,
+        type: node.get_node_instance_type,
+        launched: node.get_node_launch_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
+        state: node.get_node_state_name,
+        ip: node.get_node_private_dns_name
+      }
+    end
+
+    puts "Instances:"
+    tp instances
+
+  end
+
+end
+
+
+#####
+# Get available images
+#####
+
+desc "List microservice images in registry and local repository"
+arg_name "service_name"
+
+command :images do |list|
+
+    list.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      remote_repository = microservice.get_remote_repository
+      image_tags = remote_repository.get_remote_image_tags
+
+      # this can take awhile - print a progress bar
+      image_progress = ProgressBar.create(:title => "Getting Image Details", :total => image_tags.length, :length => 80, :format => '%a <%B> %p%% %t')
+
+      service = microservice.get_service
+      primary_container_config = service.get_primary_container_config
+      current_image = primary_container_config.image
+
+      registry_images = []
+      image_tags.each do |tag|
+        remote_image = remote_repository.get_image_by_tag(tag)
+
+        live = 'No'
+        if tag == current_image.primary_image_tag
+          live = 'Yes'
+        end
+
+        registry_images << {
+          image_id: remote_image.local_image_id,
+          tag: remote_image.primary_image_tag,
+          digest: remote_image.image_sha_digest,
+          created: remote_image.image_created_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
+          live: live
+        }
+        image_progress.increment
+
+      end
+
+      sorted_registry_images = registry_images.sort_by { |image| image[:created] }
+
+      puts "Registry Images:"
+      tp sorted_registry_images, :image_id, {:tag => {width:200}}, {:digest => {width:200}}, :created, :live
+      puts "\n"
+
+      local_repository = microservice.get_local_repository
+      local_images = []
+
+      local_repository.get_repository_images.each do |image|
+
+        pushed = 'No'
+        if remote_repository.image_exists_in_registry(image)
+          pushed = 'Yes'
+        end
+
+        local_images << {
+          image_id: image.local_image_id,
+          tag: image.primary_image_tag,
+          digest: 'N/A',
+          created: image.image_created_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
+          pushed: pushed
+
+        }
+      end
+
+      puts "Local Images:"
+      tp local_images, :image_id, {:tag => {width:200}}, {:digest => {width:200}}, :created, :pushed
+
+    end
+
+end
+
+
+#####
+# Build container
+#####
+
+desc "Build a container"
+arg_name "service_name"
+
+command :build do |build|
+
+    build.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      build_info_hash = microservice.build
+
+    end
+
+end
+
+
+#####
+# Push Image
+#####
+
+desc "Push a local image to registry"
+arg_name "service_name"
+arg_name "image_id"
+
+command :push do |push|
+
+    push.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      if args.length < 2
+          puts "Image ID is required!"
+          help_now!
+      end
+
+      local_repository = microservice.get_local_repository
+      image = local_repository.get_image_by_id(args[1])
+      image.remote_repository = microservice.get_remote_repository
+      image.primary_image_tag = image.local_image_id
+      tagged_image = image.tag_for_remote
+      tagged_image.push_to_remote!
+
+    end
+
+end
+
+
+#####
+# Deploy Image
+#####
+
+desc "Deploy a new microservice image"
+arg_name "service_name"
+arg_name "sha_digest"
+
+command :deploy do |deploy|
+
+    deploy.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      if args.length < 2
+          puts "Remote SHA Digest is required"
+          help_now!
+      end
+
+      # get repository and manager objects
+      local_repository = microservice.get_local_repository
+      remote_repository = microservice.get_remote_repository
+      ecs_manager = microservice.get_ecs_manager
+
+      # set servie and current config
+      service = microservice.get_service
+      container_config = service.get_primary_container_config
+
+
+      # get new image by digest + update and register container config
+      newimage = remote_repository.get_image_by_digest(args[1])
+      newconfig = container_config.update_container_image(newimage)
+      liveconfig = ecs_manager.register_new_container_config(newconfig)
+
+      # get current service config + update with new container config
+      service_config = service.get_current_service_config
+      service_config.update_container_config(newconfig)
+
+      # update service with new config
+      newservice = service.update_current_service_config(service_config)
+
+      puts "Deploying image #{args[1]} - check serve status for deployment updates"
+
+    end
+
+end
+
+
+#####
+# Scale Service
+#####
+
+desc "Scale microservice"
+arg_name "service_name"
+arg_name "instance_count"
+
+command :scale do |scale|
+
+    scale.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      if args.length < 2
+          puts "Please specify what level to scale to"
+          help_now!
+      end
+
+      # get service
+      service = microservice.get_service
+
+      # get current config
+      service_config = service.get_current_service_config
+
+      # set desired_count
+      service_config.desired_count = args[1]
+      newservice = service.update_current_service_config(service_config)
+
+      puts "Scaling #{args[0]} to #{args[1]} instances - check serve status for deployment updates"
+
+    end
+
+end
+
+
+#####
+# Show service logs
+#####
+
+desc "Show microservice logs"
+arg_name "service_name"
+
+command :logs do |logs|
+
+    logs.action do |global_options,options,args|
+      microservice = get_microservice_from_args(microservices,args)
+
+      service = microservice.get_service
+      service_logs = service.get_event_logs(5)
+
+      puts "Service event logs (last 5):"
+      tp service_logs,  :created_at, {:message => {width: 300}}
+
+    end
+
+end
+
+
+
+
+## --------------------
+## Utility functions
+
+def get_microservice_from_args(services,args)
+  if args.length == 0
+    puts 'service name is required!'
+    puts "services are:"
+    services.each do |service|
+      puts service.cli_service_code
+    end
+    puts "\n"
+    help_now!
+  end
+
+  # find service - each instance must specify a service_code
+  service_index = services.find_index {|service_row| service_row.cli_service_code == args[0] }
+
+  if !service_index
+    puts "service not found!"
+    puts "services are:"
+    services.each do |service_row|
+      puts service_row.cli_service_code
+    end
+    puts "\n"
+    help_now!
+  end
+
+  service_obj = services[service_index]
+
+  return service_obj
+end
+
+exit run(ARGV)

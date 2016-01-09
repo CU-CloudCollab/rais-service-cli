@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 # require global files + setup environment
+require 'bundler/setup'
 require 'dotenv'
 require 'gli'
 require 'table_print'

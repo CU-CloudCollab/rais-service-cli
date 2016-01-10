@@ -133,7 +133,8 @@ command :status do |status|
         type: node.get_node_instance_type,
         launched: node.get_node_launch_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
         state: node.get_node_state_name,
-        ip: node.get_node_private_dns_name
+        ip: node.get_node_private_dns_name,
+        availability_zone: node.get_node_availability_zone
       }
     end
 

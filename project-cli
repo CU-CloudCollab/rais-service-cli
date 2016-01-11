@@ -128,13 +128,18 @@ command :status do |status|
     # get data then build presentation hash for use with table_print
     instances = []
     service.get_nodes.each do |node|
+
+      auto_scaling_group = node.get_autoscaling_group
+
       instances << {
         id: node.get_node_instance_id,
         type: node.get_node_instance_type,
         launched: node.get_node_launch_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
         state: node.get_node_state_name,
         ip: node.get_node_private_dns_name,
-        availability_zone: node.get_node_availability_zone
+        availability_zone: node.get_node_availability_zone,
+        autoscaling_group: node.get_autoscaling_group_name,
+        launch_configuration: auto_scaling_group.get_launch_configuration_name
       }
     end
 

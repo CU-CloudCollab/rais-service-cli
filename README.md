@@ -56,7 +56,7 @@ Once everything is set up:
     $ project-cli
     
     NAME
-    project-cli - Microservice Build and Deploy Automation CLI
+        project-cli - Microservice Build and Deploy Automation CLI
 
     SYNOPSIS
         project-cli [global options] command [command options] [arguments...]
@@ -65,18 +65,20 @@ Once everything is set up:
         --help - Show this message
 
     COMMANDS
-        build    - Build a container
-        deploy   - Deploy a new microservice image
-        help     - Shows a list of commands or help for one command
-        images   - List microservice images in registry and local repository
-        logs     - Show microservice logs
-        push     - Push a local image to registry
-        scale    - Scale microservice
-        services - List microservices manged by this tool
-        status   - Display microservice status information
+        build           - Build a container
+    	cluster_details - Clusters and scaling groups associated with services
+    	deploy          - Deploy a new microservice image
+    	help            - Shows a list of commands or help for one command
+    	images          - List microservice images in registry and local repository
+    	logs            - Show microservice logs
+    	push            - Push a local image to registry
+    	scale           - Scale microservice
+    	scale_group     - Scale cluster via scaling group (see cluster_details for groups)
+    	services        - List microservices manged by this tool
+    	status          - Display microservice status information
   
 
-Each command follows format: project-cli [command] [service] [arguments]
+Each command follows format: project-cli [command] [service/target] [arguments]
 
 For example, get status for a given service:
 
@@ -142,6 +144,30 @@ Get service images:
     -------------|--------------|--------|---------------------|-------
     98f606a3d01f | 69ba735a1716 | N/A    | 2015-12-10 17:22:12 | Yes 
     				
+
+
+Get cluster and scaling group details:
+
+    $ project-cli cluster_details
+    
+    Cluster Detail: 
+    CLUSTER_NAME | SIZE | STATUS
+    -------------|------|-------
+    TEST-CLUSTER    | 4    | ACTIVE
+
+    Nodes:
+    ID         | TYPE     | LAUNCHED            | STATE   | IP                           | AVAILABILITY_ZONE | AUTOSCALING_GROUP | LAUNCH_CONFIGURATION          
+    -----------|----------|---------------------|---------|------------------------------|-------------------|-------------------|----------------------
+    i-f89dff01 | t2.micro | 2015-12-18 21:51:22 | running | ip-00-00-00-000.ec2.internal | us-east-1e        | TEST-GROUP        | TEST NODE CONFIG
+    i-b8644508 | t2.micro | 2015-12-07 21:11:46 | running | ip-00-00-00-000.ec2.internal | us-east-1a        | TEST-GROUP        | TEST NODE CONFIG
+    i-d1895162 | t2.micro | 2016-01-01 03:25:35 | running | ip-00-00-00-000.ec2.internal | us-east-1a        | TEST-GROUP        | TEST NODE CONFIG
+    i-fd681f04 | t2.micro | 2016-01-02 04:55:28 | running | ip-00-00-00-000.ec2.internal | us-east-1e        | TEST-GROUP        | TEST NODE CONFIG
+
+    Auto Scaling Groups:
+    SCALING_GROUP_NAME | LAUNCH_CONFIGURATION           | MIN_NODES | MAX_NODES | DESIRED_NODES
+    -------------------|--------------------------------|-----------|-----------|--------------
+    PIDASH - Test      | TEST NODE CONFIG               | 0         | 5         | 4            
+
 
 
 Build and push images:

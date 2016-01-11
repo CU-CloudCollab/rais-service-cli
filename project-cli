@@ -380,6 +380,121 @@ command :logs do |logs|
 
 end
 
+#####
+# Show cluster and scaling group details
+#####
+
+desc "Clusters and scaling groups associated with services"
+command :cluster_details do |cluster_details|
+
+    cluster_details.action do |global_options,options,args|
+
+
+      clusters = []
+      microservices.each do |microservice|
+        clusters << microservice.get_cluster
+      end
+
+      clusters.uniq{|cluster| [cluster.name]}.each do |cluster|
+
+        cluster_hash = {
+          cluster_name: cluster.name,
+          size: cluster.size,
+          status: cluster.status
+        }
+
+        puts "Cluster Detail: "
+        tp [cluster_hash]
+
+
+        instances = []
+        scaling_groups = []
+        cluster.nodes.each do |node|
+
+          auto_scaling_group = node.get_autoscaling_group
+          scaling_groups << auto_scaling_group
+
+          instances << {
+            id: node.get_node_instance_id,
+            type: node.get_node_instance_type,
+            launched: node.get_node_launch_dt.localtime.strftime("%Y-%m-%d %H:%M:%S"),
+            state: node.get_node_state_name,
+            ip: node.get_node_private_dns_name,
+            availability_zone: node.get_node_availability_zone,
+            autoscaling_group: node.get_autoscaling_group_name,
+            launch_configuration: auto_scaling_group.get_launch_configuration_name
+          }
+        end
+
+        puts "\n"
+
+        puts "Nodes:"
+        tp instances
+
+        scaling_group_table = []
+        scaling_groups.uniq{|scaling_group| [scaling_group.get_scaling_group_name]}.each do |scaling_group|
+          scaling_group_table << {
+           scaling_group_name: scaling_group.get_scaling_group_name,
+            launch_configuration: scaling_group.get_launch_configuration_name,
+            min_nodes: scaling_group.get_min_nodes,
+            max_nodes: scaling_group.get_max_nodes,
+            desired_nodes: scaling_group.get_desired_nodes
+          }
+        end
+
+        puts "\n"
+
+        puts "Auto Scaling Groups:"
+        tp scaling_group_table
+
+      end
+
+    end
+
+end
+
+desc "Scale cluster via scaling group (see cluster_details for groups)"
+arg_name "scaling_group"
+arg_name "desired_count"
+command :scale_group do |scale_group|
+
+    scale_group.action do |global_options,options,args|
+      if args.length < 2
+          puts "Please specify scaling group and desired capacity"
+          help_now!
+      end
+
+      # get clusters and scaling groups
+      clusters = []
+      microservices.each do |microservice|
+        clusters << microservice.get_cluster
+      end
+
+      scaling_groups = []
+      clusters.uniq{|cluster| [cluster.name]}.each do |cluster|
+        cluster.nodes.each do |node|
+          scaling_groups << node.get_autoscaling_group
+        end
+      end
+
+      unique_scaling_groups = scaling_groups.uniq{|scaling_group| [scaling_group.get_scaling_group_name]}
+      target_group = unique_scaling_groups.select{|group| group.get_scaling_group_name == args[0]}
+
+      if target_group.length == 1
+        result = target_group[0].set_desired_nodes(args[1])
+        if result
+          puts "Scaling #{target_group[0].get_scaling_group_name} to #{args[1]} nodes"
+        else
+          puts "Scaling action failed"
+        end
+
+      else
+        puts "Scaling group not found"
+      end
+
+    end
+
+end
 
 
 
